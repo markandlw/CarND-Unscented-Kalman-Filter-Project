@@ -91,6 +91,11 @@ public:
    */
   void Prediction(double delta_t);
 
+  // Break up Prediction steps into several sub-steps.
+  void AugmentedSigmaPoints(MatrixXd *Xsig_out);
+  void SigmaPointPrediction(double delta_t, const MatrixXd &Xsig_aug, MatrixXd *Xsig_out);
+  void PredictMeanAndCovariance(const MatrixXd &Xsig_pred, VectorXd *x_out, MatrixXd *P_out);
+
   /**
    * Updates the state and the state covariance matrix using a laser measurement
    * @param meas_package The measurement at k+1

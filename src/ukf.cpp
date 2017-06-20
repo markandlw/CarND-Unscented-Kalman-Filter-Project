@@ -24,10 +24,10 @@ UKF::UKF() {
   P_ = MatrixXd(5, 5);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 30;
+  std_a_ = 3;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
-  std_yawdd_ = 30;
+  std_yawdd_ = M_PI / 8;
 
   // Laser measurement noise standard deviation position1 in m
   std_laspx_ = 0.15;
@@ -51,6 +51,17 @@ UKF::UKF() {
 
   Hint: one or more values initialized above might be wildly off...
   */
+
+  // If the ukf is initialized
+  is_initialized_ = false;
+
+  // CTRV model state dimension
+  n_x_ = 5;
+
+  // Augmented state dimension for CTRV model
+  n_aug_ = 7;
+
+  lambda_ = 3 - n_aug_;
 }
 
 UKF::~UKF() {}

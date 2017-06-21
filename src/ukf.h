@@ -67,8 +67,8 @@ public:
   ///* Sigma point spreading parameter
   double lambda_;
 
-  ///* Radar measurement dimension
-  int n_radar_z_;
+  ///* Dynamic measurement dimension, changed according to incoming measurement
+  int n_z_;
 
   /**
    * Constructor
@@ -97,7 +97,7 @@ public:
   void AugmentedSigmaPoints(MatrixXd *Xsig_out);
   void SigmaPointPrediction(double delta_t, const MatrixXd &Xsig_aug, MatrixXd *Xsig_out);
   void PredictMeanAndCovariance(const MatrixXd &Xsig_pred, VectorXd *x_out, MatrixXd *P_out);
-  void PredictRadarMeasurement(VectorXd *z_out, MatrixXd *S_out);
+  void PredictRadarMeasurement(VectorXd *z_out, MatrixXd *S_out, MatrixXd *Zsig);
 
   /**
    * Updates the state and the state covariance matrix using a laser measurement

@@ -71,6 +71,10 @@ UKF::UKF() {
     double weight = 0.5 / (n_aug_ + lambda_);
     weights_(i) = weight;
   }
+
+  //Allocate matrix for predicted sigma points
+  Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
+
 }
 
 UKF::~UKF() {}
@@ -104,11 +108,9 @@ void UKF::Prediction(double delta_t) {
   MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1);
   AugmentedSigmaPoints(&Xsig_aug);
 
-  //create matrix with predicted sigma points as columns
-  MatrixXd Xsig_pred = MatrixXd(n_x_, 2 * n_aug_ + 1);
-  SigmaPointPrediction(delta_t, Xsig_aug, &Xsig_pred);
+  SigmaPointPrediction(delta_t, Xsig_aug, &Xsig_pred_);
 
-  PredictMeanAndCovariance(Xsig_pred, &x_, &P_);
+  PredictMeanAndCovariance(Xsig_pred_, &x_, &P_);
 
 }
 

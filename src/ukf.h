@@ -72,6 +72,11 @@ public:
 
   long long previous_timestamp_;
 
+  // For counting NIS status
+  int n_radar_count_;
+  int n_radar_above_thres_count_;
+  double radar_NIS_thres_;
+
   /**
    * Constructor
    */

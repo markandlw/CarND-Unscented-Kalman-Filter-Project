@@ -1,6 +1,7 @@
 #include "ukf.h"
 #include "Eigen/Dense"
 #include <iostream>
+#include <iomanip>
 
 using namespace std;
 using Eigen::MatrixXd;
@@ -24,7 +25,7 @@ UKF::UKF() {
   P_ = MatrixXd(5, 5);
 
   // Process noise standard deviation longitudinal acceleration in m/s^2
-  std_a_ = 3;
+  std_a_ = 1.5;
 
   // Process noise standard deviation yaw acceleration in rad/s^2
   std_yawdd_ = M_PI / 8;
@@ -83,6 +84,10 @@ UKF::UKF() {
 
   //Allocate matrix for predicted sigma points
   Xsig_pred_ = MatrixXd(n_x_, 2 * n_aug_ + 1);
+
+  radar_NIS_thres_ = 7.8;
+  n_radar_above_thres_count_ = 0;
+  n_radar_count_ = 0;
 }
 
 UKF::~UKF() {}
@@ -103,19 +108,21 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
         x_ << meas_package.raw_measurements_[0] * cos(meas_package.raw_measurements_[1]),
               meas_package.raw_measurements_[0] * sin(meas_package.raw_measurements_[1]), 
               0, 0, 0;
+        previous_timestamp_ = meas_package.timestamp_;
+        is_initialized_ = true;
     }
 
-    previous_timestamp_ = meas_package.timestamp_;
     return;
   }
 
-  float dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0; //dt - expressed in seconds
-  previous_timestamp_ = meas_package.timestamp_;
+  if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+    float dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0; //dt - expressed in seconds
+    previous_timestamp_ = meas_package.timestamp_;
 
-  Prediction(dt);
+    Prediction(dt);
 
   // Radar can measure r, phi, and r_dot
-  if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+
     n_z_ = 3;
     UpdateRadar(meas_package);
   }
@@ -127,13 +134,6 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
  * measurement and this one.
  */
 void UKF::Prediction(double delta_t) {
-  /**
-  TODO:
-
-  Complete this function! Estimate the object's location. Modify the state
-  vector, x_. Predict sigma points, the state, and the state covariance matrix.
-  */
-
   MatrixXd Xsig_aug = MatrixXd(n_aug_, 2 * n_aug_ + 1);
   AugmentedSigmaPoints(&Xsig_aug);
 
@@ -281,15 +281,6 @@ void UKF::UpdateLidar(MeasurementPackage meas_package) {
  * @param {MeasurementPackage} meas_package
  */
 void UKF::UpdateRadar(MeasurementPackage meas_package) {
-  /**
-  TODO:
-
-  Complete this function! Use radar data to update the belief about the object's
-  position. Modify the state vector, x_, and covariance, P_.
-
-  You'll also need to calculate the radar NIS.
-  */
-
   //mean predicted measurement
   VectorXd z_pred = VectorXd(n_z_);
 
@@ -341,6 +332,17 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   //update state mean and covariance matrix
   x_ = x_ + K * z_diff;
   P_ = P_ - K * S * K.transpose();
+
+  //Calculate NIS
+  double e = z_diff.transpose() * S.inverse() * z_diff;
+  
+  n_radar_count_++;
+  if (e > radar_NIS_thres_) {
+    n_radar_above_thres_count_++;
+  }
+
+  double inconsistnecy = (double) n_radar_above_thres_count_ / n_radar_count_;
+  cout << "Radar inconsistence: " << setprecision(2) << inconsistnecy << endl;
 }
 
 void UKF::PredictRadarMeasurement(VectorXd *z_out, MatrixXd *S_out, MatrixXd *Zsig) {

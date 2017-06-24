@@ -45,13 +45,6 @@ UKF::UKF() {
   // Radar measurement noise standard deviation radius change in m/s
   std_radrd_ = 0.3;
 
-  /**
-  TODO:
-
-  Complete the initialization. See ukf.h for other member properties.
-
-  Hint: one or more values initialized above might be wildly off...
-  */
   x_ << 0, 0, 0, 0, 0;
 
   P_ << 1, 0, 0, 0, 0,
@@ -88,6 +81,10 @@ UKF::UKF() {
   radar_NIS_thres_ = 7.8;
   n_radar_above_thres_count_ = 0;
   n_radar_count_ = 0;
+
+  n_lidar_count_ = 0;
+  n_lidar_above_thres_count_ = 0;
+  lidar_NIS_thres_ = 6.0;
 }
 
 UKF::~UKF() {}
@@ -97,34 +94,35 @@ UKF::~UKF() {}
  * either radar or laser.
  */
 void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
-  /**
-  TODO:
-
-  Complete this function! Make sure you switch between lidar and radar
-  measurements.
-  */
   if (!is_initialized_) {
     if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
-        x_ << meas_package.raw_measurements_[0] * cos(meas_package.raw_measurements_[1]),
-              meas_package.raw_measurements_[0] * sin(meas_package.raw_measurements_[1]), 
-              0, 0, 0;
-        previous_timestamp_ = meas_package.timestamp_;
-        is_initialized_ = true;
+      x_ << meas_package.raw_measurements_[0] * cos(meas_package.raw_measurements_[1]),
+            meas_package.raw_measurements_[0] * sin(meas_package.raw_measurements_[1]), 
+            0, 0, 0;
+    } else if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
+      x_ << meas_package.raw_measurements_[0],
+            meas_package.raw_measurements_[1], 
+            0, 0, 0;
     }
 
+    previous_timestamp_ = meas_package.timestamp_;
+    is_initialized_ = true;
     return;
   }
 
+  float dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0; //dt - expressed in seconds
+  previous_timestamp_ = meas_package.timestamp_;
+
+  Prediction(dt);
+
   if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
-    float dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0; //dt - expressed in seconds
-    previous_timestamp_ = meas_package.timestamp_;
-
-    Prediction(dt);
-
-  // Radar can measure r, phi, and r_dot
-
+    // Radar can measure r, phi, and r_dot
     n_z_ = 3;
     UpdateRadar(meas_package);
+  }
+  else if (meas_package.sensor_type_ == MeasurementPackage::LASER) {
+    n_z_ = 2;
+    UpdateLidar(meas_package);
   }
 }
 
@@ -140,7 +138,6 @@ void UKF::Prediction(double delta_t) {
   SigmaPointPrediction(delta_t, Xsig_aug, &Xsig_pred_);
 
   PredictMeanAndCovariance(Xsig_pred_, &x_, &P_);
-
 }
 
 void UKF::AugmentedSigmaPoints(MatrixXd *Xsig_out) {
@@ -231,7 +228,6 @@ void UKF::SigmaPointPrediction(double delta_t, const MatrixXd &Xsig_aug, MatrixX
 }
 
 void UKF::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, VectorXd *x_out, MatrixXd *P_out) {
-  
   //create vector for predicted state
   VectorXd x = VectorXd(n_x_);
 
@@ -266,14 +262,92 @@ void UKF::PredictMeanAndCovariance(const MatrixXd &Xsig_pred, VectorXd *x_out, M
  * @param {MeasurementPackage} meas_package
  */
 void UKF::UpdateLidar(MeasurementPackage meas_package) {
-  /**
-  TODO:
+  //mean predicted measurement
+  VectorXd z_pred = VectorXd(n_z_);
 
-  Complete this function! Use lidar data to update the belief about the object's
-  position. Modify the state vector, x_, and covariance, P_.
+  //measurement covariance matrix S
+  MatrixXd S = MatrixXd(n_z_, n_z_);
 
-  You'll also need to calculate the lidar NIS.
-  */
+  //create matrix for sigma points in measurement space
+  MatrixXd Zsig = MatrixXd(n_z_, 2 * n_aug_ + 1);
+
+  VectorXd z = VectorXd(n_z_);
+  z << meas_package.raw_measurements_[0],
+       meas_package.raw_measurements_[1];
+
+  PredictLidarMeasurement(&z_pred, &S, &Zsig);
+
+  //create matrix for cross correlation Tc
+  MatrixXd Tc = MatrixXd(n_x_, n_z_);
+
+  //calculate cross correlation matrix
+  Tc.fill(0.0);
+  for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
+    //residual
+    VectorXd z_diff = Zsig.col(i) - z_pred;
+
+    // state difference
+    VectorXd x_diff = Xsig_pred_.col(i) - x_;
+
+    Tc = Tc + weights_(i) * x_diff * z_diff.transpose();
+  }
+
+  //Kalman gain K;
+  MatrixXd K = Tc * S.inverse();
+
+  //residual
+  VectorXd z_diff = z - z_pred;
+
+  //update state mean and covariance matrix
+  x_ = x_ + K * z_diff;
+  P_ = P_ - K * S * K.transpose();
+
+
+  //Calculate NIS
+  double e = z_diff.transpose() * S.inverse() * z_diff;
+  
+  n_lidar_count_++;
+  if (e > lidar_NIS_thres_) {
+    n_lidar_above_thres_count_++;
+  }
+
+  // Depict the fraction of inconsistence for analyizing.
+  double inconsistnecy = (double) n_lidar_above_thres_count_ / n_lidar_count_;
+  cout << "Lidar inconsistence: " << setprecision(2) << inconsistnecy << endl;
+}
+
+void UKF::PredictLidarMeasurement(VectorXd *z_out, MatrixXd *S_out, MatrixXd *Zsig) {
+  //transform sigma points into Lidar measurement space
+  for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
+    (*Zsig)(0,i) = Xsig_pred_(0,i);   //p_x
+    (*Zsig)(1,i) = Xsig_pred_(1,i);   //p_y
+  }
+
+  //mean predicted measurement
+  VectorXd z_pred = VectorXd(n_z_);
+  z_pred.fill(0.0);
+  for (int i = 0; i < 2 * n_aug_ + 1; i++) {
+      z_pred = z_pred + weights_(i) * (*Zsig).col(i);
+  }
+
+  //measurement covariance matrix S
+  MatrixXd S = MatrixXd(n_z_, n_z_);
+  S.fill(0.0);
+  for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
+    //residual
+    VectorXd z_diff = (*Zsig).col(i) - z_pred;
+
+    S = S + weights_(i) * z_diff * z_diff.transpose();
+  }
+
+  //add measurement noise covariance matrix
+  MatrixXd R = MatrixXd(n_z_, n_z_);
+  R <<  std_laspx_ * std_laspx_, 0,
+        0, std_laspy_ * std_laspy_;
+  S = S + R;
+
+  *z_out = z_pred;
+  *S_out = S;
 }
 
 /**
@@ -303,7 +377,6 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   //calculate cross correlation matrix
   Tc.fill(0.0);
   for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
-
     //residual
     VectorXd z_diff = Zsig.col(i) - z_pred;
     //angle normalization
@@ -341,14 +414,14 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
     n_radar_above_thres_count_++;
   }
 
+  // Depict the fraction of inconsistence for analyizing.
   double inconsistnecy = (double) n_radar_above_thres_count_ / n_radar_count_;
   cout << "Radar inconsistence: " << setprecision(2) << inconsistnecy << endl;
 }
 
 void UKF::PredictRadarMeasurement(VectorXd *z_out, MatrixXd *S_out, MatrixXd *Zsig) {
-  //transform sigma points into measurement space
+  //transform sigma points into Radar measurement space
   for (int i = 0; i < 2 * n_aug_ + 1; i++) {  //2n+1 simga points
-
     // extract values for better readibility
     double p_x = Xsig_pred_(0,i);
     double p_y = Xsig_pred_(1,i);

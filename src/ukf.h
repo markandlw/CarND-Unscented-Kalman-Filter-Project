@@ -72,10 +72,15 @@ public:
 
   long long previous_timestamp_;
 
-  // For counting NIS status
+  // For counting radar NIS status
   int n_radar_count_;
   int n_radar_above_thres_count_;
   double radar_NIS_thres_;
+
+  // For counting lidar NIS status
+  int n_lidar_count_;
+  int n_lidar_above_thres_count_;
+  double lidar_NIS_thres_;
 
   /**
    * Constructor
@@ -104,19 +109,20 @@ public:
   void AugmentedSigmaPoints(MatrixXd *Xsig_out);
   void SigmaPointPrediction(double delta_t, const MatrixXd &Xsig_aug, MatrixXd *Xsig_out);
   void PredictMeanAndCovariance(const MatrixXd &Xsig_pred, VectorXd *x_out, MatrixXd *P_out);
-  void PredictRadarMeasurement(VectorXd *z_out, MatrixXd *S_out, MatrixXd *Zsig);
 
   /**
    * Updates the state and the state covariance matrix using a laser measurement
    * @param meas_package The measurement at k+1
    */
   void UpdateLidar(MeasurementPackage meas_package);
+  void PredictLidarMeasurement(VectorXd *z_out, MatrixXd *S_out, MatrixXd *Zsig);
 
   /**
    * Updates the state and the state covariance matrix using a radar measurement
    * @param meas_package The measurement at k+1
    */
   void UpdateRadar(MeasurementPackage meas_package);
+  void PredictRadarMeasurement(VectorXd *z_out, MatrixXd *S_out, MatrixXd *Zsig);
 };
 
 #endif /* UKF_H */

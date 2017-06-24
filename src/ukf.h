@@ -70,6 +70,8 @@ public:
   ///* Dynamic measurement dimension, changed according to incoming measurement
   int n_z_;
 
+  long long previous_timestamp_;
+
   /**
    * Constructor
    */

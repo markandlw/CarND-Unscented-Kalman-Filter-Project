@@ -51,6 +51,15 @@ UKF::UKF() {
 
   Hint: one or more values initialized above might be wildly off...
   */
+  x_ << 0, 0, 0, 0, 0;
+
+  P_ << 1, 0, 0, 0, 0,
+        0, 1, 0, 0, 0,
+        0, 0, 1, 0, 0,
+        0, 0, 0, 1, 0,
+        0, 0, 0, 0, 1;
+
+  previous_timestamp_ = 0;
 
   // If the ukf is initialized
   is_initialized_ = false;
@@ -89,9 +98,27 @@ void UKF::ProcessMeasurement(MeasurementPackage meas_package) {
   Complete this function! Make sure you switch between lidar and radar
   measurements.
   */
+  if (!is_initialized_) {
+    if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+        x_ << meas_package.raw_measurements_[0] * cos(meas_package.raw_measurements_[1]),
+              meas_package.raw_measurements_[0] * sin(meas_package.raw_measurements_[1]), 
+              0, 0, 0;
+    }
+
+    previous_timestamp_ = meas_package.timestamp_;
+    return;
+  }
+
+  float dt = (meas_package.timestamp_ - previous_timestamp_) / 1000000.0; //dt - expressed in seconds
+  previous_timestamp_ = meas_package.timestamp_;
+
+  Prediction(dt);
 
   // Radar can measure r, phi, and r_dot
-  n_z_ = 3;
+  if (meas_package.sensor_type_ == MeasurementPackage::RADAR) {
+    n_z_ = 3;
+    UpdateRadar(meas_package);
+  }
 }
 
 /**
@@ -275,7 +302,7 @@ void UKF::UpdateRadar(MeasurementPackage meas_package) {
   VectorXd z = VectorXd(n_z_);
   z << meas_package.raw_measurements_[0],
        meas_package.raw_measurements_[1],
-       meas_package.raw_measurements_[2],
+       meas_package.raw_measurements_[2];
 
   PredictRadarMeasurement(&z_pred, &S, &Zsig);
 
